@@ -10,9 +10,9 @@
 # here put the import lib
 from ziniao_core import ZiniaoShop
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.select import Select
 import time
 import pandas as pd
-from write_table import write_table
 
 
 def convert(lst):
@@ -36,6 +36,14 @@ def is_Applying(driver):
     except:
         return False
 
+def is_loging(driver):
+    try:
+        driver.find_element(By.XPATH, "//*[@id='dropdown-account-switcher-container']")
+        return True
+    except:
+        return False
+
+
 class ZiniaoVC(ZiniaoShop):
 
     def prepare_env(self, browser):
@@ -49,11 +57,29 @@ class ZiniaoVC(ZiniaoShop):
 
     def set_dateset(self, dataset, report_date):
         self.url = f"https://vendorcentral.amazon.{self.site_url}/retail-analytics/dashboard/{dataset}".format()
-        self.document = f'{dataset.title()}_Manufacturing_Retail_{self.site_name}_Custom_{report_date}_{report_date}'
+        self.document_start = f'{dataset.title()}_Manufacturing_Retail'
+        self.document_end = f'Custom_{report_date}_{report_date}'
 
-    def run_task(self):
-        self.driver.get(self.url)
-        while is_Applying(self.driver) is False:
+    def prepare_shop(self):
+
+        self.driver.find_element(By.XPATH, '//div[contains(@class, "dropdown-account-switcher")]').click()
+        elements = self.driver.find_elements(By.XPATH, '//div[contains(@class, "dropdown-account-switcher-list-item")]')
+        shop_names = []
+        for i in elements:
+            shop_names.append(i.get_attribute('title'))
+        shop_names = [i for i in shop_names if len(i) > 0]
+
+        self.select_shops = [i for i in shop_names if i in self.shop_list]
+
+    def choose_shop(self, shop_name):
+        self.driver.find_element(By.XPATH, f"//*[contains(text(),'{shop_name}')]").click()
+        if self.driver.find_element(By.XPATH, '//div[contains(@class, "dropdown-account-switcher")]').text == shop_name:
+            print(f"=====选择店铺：{shop_name}=====")
+        else:
+            print(f"=====店铺选择失败：{shop_name}=====")
+
+    def deal_login(self):
+        while is_loging(self.driver) is False:
             if self.driver.find_element(By.XPATH, "//input[contains(@id,'continue')]") is not None:
                 self.driver.find_element(By.XPATH, "//input[contains(@id,'continue')]").click()
                 time.sleep(3)
@@ -61,6 +87,13 @@ class ZiniaoVC(ZiniaoShop):
                 time.sleep(3)
                 self.driver.find_element(By.XPATH, "//input[contains(@id,'auth-signin-button')]").click()
                 time.sleep(3)
+        print("prepare shop list")
+        self.prepare_shop()
+
+    def run_task(self):
+        self.driver.get(self.url)
+        while is_Applying(self.driver) is False:
+            self.driver.get(self.url)
 
         while self.driver.find_element(By.XPATH, "//kat-button[contains(@label,'Apply')]").get_attribute("disabled") == "true":
             time.sleep(10)
@@ -85,6 +118,8 @@ class ZiniaoVC(ZiniaoShop):
         kat_table = self.driver.find_element(By.XPATH, "//kat-table[contains(@role,'table')]")
 
         kat_dict = []
+        documents = []
+
         for i in kat_table.find_elements(By.XPATH, "//kat-table-cell[contains(@role,'cell')]"):
             if i.text in ["Download", "Processing"]:
                 kat_dict.append(i.find_element(By.XPATH, ".//a").get_attribute("href"))
@@ -92,10 +127,9 @@ class ZiniaoVC(ZiniaoShop):
                 kat_dict.append(i.find_element(By.XPATH, ".//div").text)
         res = convert(kat_dict)
 
-        while res[self.document] is None:
-            time.sleep(10)
+        documents = [i for i in res.keys() if i.startswith(self.document_start) and i.endswith(self.document_end)]
 
-        return pd.read_csv(res[self.document], skiprows=1, header=0)
+        return pd.read_csv(res[documents[0]], skiprows=1, header=0)
 
     def get_store_data(self, browser, report_date, dataset):
         self.open_store_driver(browser)
@@ -103,39 +137,29 @@ class ZiniaoVC(ZiniaoShop):
         self.prepare_env(browser)
         print(self.site_name, self.site_url, report_date)
         self.set_dateset(dataset, report_date)
-        print(self.url, self.document)
-        self.run_task()
-        data_set = self.run_download()
-        data_set = data_set.assign(site_name=browser['platform_name'], type=dataset, report_date=report_date)
-        if dataset == 'inventory':
-            data_set.columns = ['ASIN','Product_title','Brand','Sourceable_Product_OOS','Vendor_Confirmation_Rate','Net_Received',
-                                'Net_Received_Units','Open_Purchase_Order_Quantity','Receive_Fill_Rate','Overall_Vendor_Lead_days',
-                                'Unfilled_Customer_Ordered_Units','Aged_90_Days_Sellable_Inventory','Aged_90_Days_Sellable_Units',
-                                'Sellable_On_Hand_Inventory','Sellable_On_Hand_Units','Unsellable_On_Hand_Inventory','Unsellable_On_Hand_Units',
-                                'site_name','type','report_date']
-        data_set.columns = [i.replace(' ', '_') for i in data_set.columns]
-        return data_set
+        print(self.url, self.document_start, self.document_end)
+        print("deal login")
+        self.deal_login()
+        data_sets = []
+        for shop in self.select_shops:
+            self.choose_shop(shop)
 
-
-    def run_store_driver(self, browser, report_date):
-        self.open_store_driver(browser)
-        # your job here
-        self.prepare_env(browser)
-        print(self.site_name, self.site_url, report_date)
-        for dataset in ['sales', 'inventory']:
-            self.set_dateset(dataset, report_date)
-            print(self.url, self.document)
             self.run_task()
             data_set = self.run_download()
-            data_set = data_set.assign(site_name=browser['platform_name'], type=dataset, report_date=report_date)
+            data_set = data_set.assign(site_name=browser['platform_name'], type=dataset, report_date=report_date, Store_code=shop)
             if dataset == 'inventory':
                 data_set.columns = ['ASIN','Product_title','Brand','Sourceable_Product_OOS','Vendor_Confirmation_Rate','Net_Received',
                                     'Net_Received_Units','Open_Purchase_Order_Quantity','Receive_Fill_Rate','Overall_Vendor_Lead_days',
                                     'Unfilled_Customer_Ordered_Units','Aged_90_Days_Sellable_Inventory','Aged_90_Days_Sellable_Units',
                                     'Sellable_On_Hand_Inventory','Sellable_On_Hand_Units','Unsellable_On_Hand_Inventory','Unsellable_On_Hand_Units',
-                                    'site_name','type','report_date']
-            data_set.columns = [i.replace(' ', '_') for i in data_set.columns]
-            print(data_set.head())
+                                    'site_name','type','report_date','Store_code']
+            data_set.columns = [i.replace(' ', '_').lower() for i in data_set.columns]
+            data_sets.append(data_set)
+        return pd.concat(data_sets)
+
+    def run_store_driver(self, browser, report_date):
+        for dataset in ['sales', 'inventory']:
+            df = self.get_store_data(browser, report_date, dataset)
 
         self.close_store_driver(browser)
 

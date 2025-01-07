@@ -56,6 +56,7 @@ def delete_all_cache_with_path(path):
     if os.path.exists(cache_path):
         shutil.rmtree(cache_path)
 
+
 def download_file(url, save_path):
     # 发送GET请求获取文件内容
     response = requests.get(url, stream=True)
@@ -69,6 +70,7 @@ def download_file(url, save_path):
         print(f"文件已成功下载并保存到：{save_path}")
     else:
         print(f"下载失败，响应状态码为：{response.status_code}")
+
 
 def download_driver(driver_folder_path):
     is_windows = platform.system() == 'Windows'
@@ -126,9 +128,11 @@ def download_driver(driver_folder_path):
                 cmd = ['chmod', '+x', local_file_path]
                 subprocess.Popen(cmd)
 
+
 def encrypt_sha1(fpath: str) -> str:
     with open(fpath, 'rb') as f:
         return hashlib.new('sha1', f.read()).hexdigest()
+
 
 def check_env(driver_folder_path, client_path, socket_port):
     """
@@ -200,7 +204,7 @@ class ZiniaoBrowser():
         except Exception:
             print('start browser process failed: ' + traceback.format_exc())
             exit()
-    
+
     def update_core(self, user_info):
         """
         下载所有内核，打开店铺前调用，需客户端版本5.285.7以上
@@ -227,7 +231,7 @@ class ZiniaoBrowser():
             else:
                 print(f"等待更新内核: {json.dumps(result)}")
                 time.sleep(2)    
-    
+
     def send_http(self, data):
         """
         通讯方式
@@ -259,7 +263,7 @@ class ZiniaoBrowser():
             return webdriver.Chrome(service=Service(chrome_driver_path), options=options)
         else:
             return None
-        
+
     def open_ip_check(self, driver, ip_check_url):
         """
         打开ip检测页检测ip是否正常
@@ -312,12 +316,13 @@ class ZiniaoBrowser():
 
 
 class ZiniaoShop():
-    def __init__(self, company, username, password, driver_folder_path, client_path, socket_port):
+    def __init__(self, company, username, password, driver_folder_path, client_path, socket_port, shop_list):
         self.user_info = {
             "company": company,
             "username": username,
             "password": password
             }
+        self.shop_list = shop_list
         self.driver_folder_path, self.client_path, self.socket_port = check_env(driver_folder_path, client_path, socket_port)
         self.browser = ZiniaoBrowser(self.driver_folder_path, self.client_path, self.socket_port, self.user_info)
 
@@ -401,7 +406,6 @@ class ZiniaoShop():
             print(f"Fail {json.dumps(r, ensure_ascii=False)} ")
             exit()
 
-
     def close_store(self, browser_oauth):
         request_id = str(uuid.uuid4())
         data = {
@@ -421,7 +425,7 @@ class ZiniaoShop():
         else:
             print(f"Fail {json.dumps(r, ensure_ascii=False)} ")
             exit()
-    
+
     def open_store_driver(self, browser):
         # 如果要指定店铺ID, 获取方法:登录紫鸟客户端->账号管理->选择对应的店铺账号->点击"查看账号"进入账号详情页->账号名称后面的ID即为店铺ID
         store_id = browser.get('browserOauth')
@@ -464,7 +468,6 @@ class ZiniaoShop():
         print(f"=====关闭店铺：{store_name}=====")
         self.close_store(store_id)
 
-
     def run_store_driver(self, browser):
         self.open_store_driver(browser)
         # your job here
@@ -476,7 +479,6 @@ class ZiniaoShop():
 
     def get_exit(self):
         self.browser.get_exit()
-
 
 
 if __name__ == "__main__":
